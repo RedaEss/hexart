@@ -1,2 +1,348 @@
 # The pool of tears
+```{r}
+# install.packages("wesanderson")
+# install.packages("sf")
+# install.packages("lwgeom")
+# install.packages("wesanderson")
+
+library(tidyverse)
+library(sf)
+library(lwgeom)
+library(wesanderson)
+```
+```{r}
+#' Return the {sf} polygons
+#'
+#' @param n_sides number of sides of regular polygon
+#' @param offset_degrees offset angle for orientation of regular polygon
+#' @param ox origin of regular polygon x coordinate
+#' @param oy origin of regular polygon y coordinate
+#' @param radius radius of or regular polygon (distance from origin to polygon vertices)
+#' @param px origin point for the splitting lines x coordinate
+#' @param py origin point for the splitting lines y coordinate
+split_poly <- function(n_sides, offset_degrees, ox, oy, radius, px = NULL, py = NULL){
+
+    # Create polygon angles and vertex xy coords
+    a_step <- (2*pi)/n_sides
+    a <- seq(pi/2 + offset_degrees*(pi/180), by = a_step, l = n_sides)
+    x <- ox + cos(a) * radius
+    y <- oy + sin(a) * radius
+    
+    # Create POLYGON
+    # Close polygon by making the last point the same as the first point
+    shape_polygon <- st_polygon(x = list(matrix(c(c(x, x[1]), c(y, y[1])), ncol = 2)))
+
+    # Compute a random point inside the polygon if no px or py is provided
+    if(is.null(px) || is.null(py)){
+        p_xy <- st_coordinates(st_sample(shape_polygon, 1))
+        px <- p_xy[1,1]
+        py <- p_xy[1,2]}
+
+    # Create MULTILINESTRING from each polygon vertex to the random point
+    lines <-
+        st_multilinestring(
+            lapply(
+                X = seq_along(a), 
+                FUN = function(b) matrix(c(c(x[b], px), c(y[b], py)), ncol = 2)))
+    
+    # Split the polygon based on the MULTILINESTRING
+    lwgeom::st_split(shape_polygon, lines) |> st_collection_extract("POLYGON")}
+```
+```{r}
+set.seed(7)
+crossing(ox = 1:5, oy = 1:5) |> 
+    mutate(
+        n_sides = 4,
+        offset_degrees = 45,
+        radius = 0.55,
+        g = pmap(
+            .l =
+                list(
+                    ox = ox, 
+                    oy = oy, 
+                    n_sides = n_sides, 
+                    offset_degrees = offset_degrees,
+                    radius = radius),
+            .f = split_poly)) |> 
+    unnest(cols = g) |>
+    group_by(ox, oy) |> 
+    mutate(col = sample(wes_palettes$Zissou1, size = n(), replace = FALSE)) |> 
+    st_as_sf() |> 
+    ggplot()+
+    geom_sf(aes(fill = I(col)), col = NA)+
+    scale_x_continuous(expand = expansion(add = c(1,1)))+
+    scale_y_continuous(expand = expansion(add = c(1,1)))+
+    theme_void()+
+    theme(
+        legend.position = "",
+        panel.background = element_rect(color = NA, fill = "grey95"))
+```
+```{r}
+set.seed(4)
+crossing(ox = 1:5, oy = 1:5) |> 
+    mutate(
+        n_sides = 4,
+        offset_degrees = 45,
+        radius = 0.55,
+        g = pmap(
+            .l =
+                list(
+                    ox = ox, 
+                    oy = oy, 
+                    n_sides = n_sides, 
+                    offset_degrees = offset_degrees,
+                    radius = radius),
+            .f = split_poly)) |> 
+    unnest(cols = g) |>
+    group_by(ox, oy) |> 
+    mutate(col = sample(unlist(wes_palettes), size = n(), replace = FALSE)) |> 
+    st_as_sf() |> 
+    ggplot()+
+    geom_sf(aes(fill = I(col)), col = NA)+
+    scale_x_continuous(expand = expansion(add = c(1,1)))+
+    scale_y_continuous(expand = expansion(add = c(1,1)))+
+    theme_void()+
+    theme(
+        legend.position = "",
+        panel.background = element_rect(color = NA, fill = "grey95"))
+```
+
+
+```{r}
+set.seed(17)
+crossing(ox = 1:10, oy = 1:10) |> 
+    mutate(
+        n_sides = 4,
+        offset_degrees = 45,
+        radius = scales::rescale(sqrt(abs(ox - 5.5)^2 + abs(oy - 5.5)^2), c(0.5, 0.3)),
+        g = pmap(
+            .l =
+                list(
+                    ox = ox, 
+                    oy = oy, 
+                    n_sides = n_sides, 
+                    offset_degrees = offset_degrees,
+                    radius = radius),
+            .f = split_poly)) |> 
+    unnest(cols = g) |>
+    group_by(ox, oy) |> 
+    mutate(col = sample(wes_palettes$Darjeeling2, size = n(), replace = FALSE)) |> 
+    st_as_sf() |> 
+    ggplot()+
+    geom_sf(aes(fill = I(col)), col = 1)+
+    scale_x_continuous(expand = expansion(add = c(1,1)))+
+    scale_y_continuous(expand = expansion(add = c(1,1)))+
+    theme_void()+
+    theme(
+        legend.position = "",
+        panel.background = element_rect(color = NA, fill = sample(unlist(wes_palettes), 1)))
+```
+
+```{r}
+set.seed(1)
+crossing(ox = 1:5, oy = 1:5) |> 
+    mutate(
+        n_sides = 3,
+        offset_degrees = seq(0, 180, l = n()),
+        radius = 0.5,
+        g = pmap(
+            .l =
+                list(
+                    ox = ox, 
+                    oy = oy, 
+                    n_sides = n_sides, 
+                    offset_degrees = offset_degrees,
+                    radius = radius),
+            .f = split_poly)) |> 
+    unnest(cols = g) |>
+    group_by(ox, oy) |> 
+    mutate(
+        a = st_area(g),
+        col = sample(wes_palettes$Rushmore, size = n(), replace = FALSE)) |> 
+    st_as_sf() |> 
+    ggplot()+
+    geom_sf(aes(fill = I(col)), col = 1)+
+    scale_x_continuous(expand = expansion(add = c(1,1)))+
+    scale_y_continuous(expand = expansion(add = c(1,1)))+
+    theme_void()+
+    theme(
+        legend.position = "",
+        panel.background = element_rect(color = NA, fill = "grey95"))
+```
+
+```{r}
+set.seed(1)
+crossing(oy = 1:15, ox = 1:15) |> 
+    mutate(
+        n_sides = sample(3:5, size = n(), replace = TRUE), 
+        offset_degrees = runif(n(), 0, 360),
+        radius = scales::rescale(sqrt(abs(ox - 4)^2 + abs(oy - 4)^2), c(0.5, 0.1)),
+        g = pmap(
+            .l =
+                list(
+                    ox = ox, 
+                    oy = oy, 
+                    n_sides = n_sides, 
+                    offset_degrees = offset_degrees,
+                    radius = radius),
+            .f = split_poly)) |> 
+    unnest(cols = g) |>
+    group_by(ox, oy) |> 
+    mutate(
+        a = st_area(g),
+        col = sample(wes_palettes$Moonrise3, size = n(), replace = FALSE)) |> 
+    st_as_sf() |> 
+    ggplot()+
+    geom_sf(aes(fill = I(col)), col = 1)+
+    scale_x_continuous(expand = expansion(add = c(1,1)))+
+    scale_y_continuous(expand = expansion(add = c(1,1)))+
+    theme_void()+
+    theme(
+        legend.position = "",
+        panel.background = element_rect(color = NA, fill = "grey95"))
+```
+
+```{r}
+set.seed(1)
+
+nx <- 10
+ny <- 10
+
+hex_centers <-
+    sf::st_make_grid(
+    x = st_polygon(list(matrix(c(0, 0, nx, nx, 0, 0, ny, ny, 0, 0), ncol = 2))),
+    n = c(nx, ny), 
+    what = "centers",
+    square = FALSE, 
+    flat_topped = FALSE) |>
+    st_coordinates() |> 
+    as_tibble() |> 
+    rename(ox = X, oy = Y)
+
+hex_polys <-
+    sf::st_make_grid(
+    x = st_polygon(list(matrix(c(0, 0, nx, nx, 0, 0, ny, ny, 0, 0), ncol = 2))),
+    n = c(nx, ny),
+    square = FALSE, 
+    flat_topped = FALSE)
+
+f <- 1
+hex_centers |>
+    mutate(
+        n_sides = 6,
+        offset_degrees = 0,
+        radius = (1/sqrt(3))*f,
+        g = pmap(
+            .l =
+                list(
+                    ox = ox, 
+                    oy = oy, 
+                    n_sides = n_sides, 
+                    offset_degrees = offset_degrees,
+                    radius = radius),
+            .f = split_poly)) |> 
+    unnest(cols = g) |>
+    group_by(ox, oy) |> 
+    mutate(col = sample(wes_palettes |> unlist(), size = n(), replace = FALSE)) |> 
+    st_as_sf() |> 
+    ggplot()+
+    geom_sf(aes(fill = I(col)), col = NA) +
+    # geom_sf(data = hex_polys, fill = NA, col = 1) +
+    scale_x_continuous(expand = expansion(add = c(1,1)))+
+    scale_y_continuous(expand = expansion(add = c(1,1)))+
+    theme_void()+
+    theme(
+        legend.position = "",
+        panel.background = element_rect(color = NA, fill = "grey95"))
+```
+
+```{r}
+
+
+f <- 0.85
+hex_centers |>
+    mutate(
+        n_sides = 6,
+        offset_degrees = seq(0, 17, l=n()),
+        radius = (1/sqrt(3))*f,
+        g = pmap(
+            .l =
+                list(
+                    ox = ox, 
+                    oy = oy, 
+                    px = 0,
+                    # px = 5,
+                    # py = 2,
+                    py = 0,
+                    n_sides = n_sides, 
+                    offset_degrees = offset_degrees,
+                    radius = radius),
+            .f = split_poly)) |> 
+    unnest(cols = g) |>
+    group_by(ox, oy) |> 
+    # mutate(col = sample(wes_palettes |> unlist(), size = n(), replace = FALSE)) |> 
+    mutate(col = sample(wes_palettes |> unlist(), size = n(), replace = FALSE)) |> 
+    st_as_sf() |> 
+    ggplot()+
+    geom_sf(aes(fill = I(col)), col = NA) +
+    # geom_sf(data = hex_polys, fill = NA, col = 1) +
+    scale_x_continuous(expand = expansion(add = c(1,1)))+
+    scale_y_continuous(expand = expansion(add = c(1,1)))+
+    theme_void()+
+    theme(
+        legend.position = "",
+        panel.background = element_rect(color = NA, fill = "grey95"))
+```
+
+```{r}
+# # Définir les centres des hexagones
+# hex_centers <- data.frame(
+#     ox = c(1, 1, 1, 1),
+#     oy = c(4, 3, 2, 1)
+# )
+# 
+# # Définir le facteur de réduction
+f <- 0.85
+
+# Créer les hexagones et les visualiser
+hex_centers |>
+    mutate(
+        n_sides = 6,
+        offset_degrees = seq(0, 17, l=n()),
+        radius = (1/sqrt(3))*f,
+        g = pmap(
+            .l =
+                list(
+                    ox = ox,
+                    oy = oy,
+                    px = 2,
+                    py = 2,
+                    n_sides = n_sides,
+                    offset_degrees = offset_degrees,
+                    radius = radius),
+            .f = split_poly)) |>
+    unnest(cols = g) |>
+    group_by(ox, oy) |>
+    # mutate(col = case_when(
+    mutate(col = sample(c("red", "green" , "yellow"), size = n(), replace = TRUE)) |> 
+        # oy == max(oy) ~ "green",
+        # oy == max(oy) ~ sample(c("yellow","red")),
+        # oy == max(oy) ~ sample("yellow","red"),
+        # oy == max(oy) - 1 ~ "yellow",
+        # oy == max(oy) - 2 ~ "yellow",
+        # oy == max(oy) - 3 ~ "red",
+        # TRUE ~ "grey"
+    # )) |>
+    st_as_sf() |>
+    ggplot()+
+    geom_sf(aes(fill = I(col)), col = NA) +
+    scale_x_continuous(expand = expansion(add = c(1,1)))+
+    scale_y_continuous(expand = expansion(add = c(1,1)))+
+    theme_void()+
+    theme(
+        legend.position = "",
+        panel.background = element_rect(color = NA, fill = "grey95"))
+```
+
+
 
